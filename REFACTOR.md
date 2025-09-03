@@ -1,144 +1,126 @@
-# Refactor Design: Splitting `flutter_genui` into Client and Server
+# Refactoring `simple_chat` to a `genui_client` Example
 
 ## Overview
 
-This document outlines the design for refactoring the `flutter_genui` package into a client-server architecture. The current package combines AI-driven UI generation and Flutter-based rendering into a single monolithic library. This refactor will separate these concerns into two distinct packages:
-
-1. **`genui_server`**: A server-side component built with Genkit in TypeScript. It will be responsible for interacting with the Large Language Model (LLM) to generate UI definitions.
-2. **`genui_client`**: A Flutter package responsible for communicating with the `genui_server`, receiving UI definitions, and rendering them using Flutter.
-
-This separation will improve modularity, scalability, and maintainability. It will also allow for the UI generation logic to be updated and deployed independently of the client application.
+This document outlines the plan to refactor the existing `simple_chat` example, which currently uses the `flutter_genui` package and a direct Firebase connection, into a new example for the `genui_client` package. The new example will demonstrate the intended client-server architecture by connecting to a `genui_server` instance, which in turn communicates with the generative AI model. This provides a clear, practical example of how to use `genui_client` as a replacement for the higher-level `flutter_genui` abstraction.
 
 ## Detailed Analysis of the Goal
 
-The primary goal is to decouple the UI generation logic from the UI rendering logic.
+### Current State
 
-### Current Architecture Limitations
+The `simple_chat` example, located in `examples/simple_chat`, is a basic chat application that demonstrates the capabilities of the `flutter_genui` package. Its key characteristics are:
 
-- **Monolithic Structure**: All logic is bundled into one Flutter package. Changes to the AI interaction logic require a new release of the Flutter app.
-- **Language Constraint**: The entire system is written in Dart/Flutter, which may not be the optimal environment for server-side AI orchestration.
-- **Scalability**: The current architecture is not designed for scalability. Each client runs its own UI generation, which is inefficient.
-- **Security**: Embedding AI model access and system prompts directly in the client application poses a security risk.
+- **Dependencies**: It directly depends on `flutter_genui` and `firebase_core`.
+- **Architecture**: It initializes a Firebase connection and uses the `UiAgent` from `flutter_genui` to interact directly with a generative model (e.g., a Google AI model via Firebase).
+- **Functionality**: It allows a user to send text prompts and displays both the user's messages and the AI's responses, which can include generated UI surfaces.
 
-### Desired Architecture Benefits
+### Target State
 
-- **Separation of Concerns**: The client is only concerned with rendering, and the server is only concerned with generation.
-- **Technology Fit**: Use TypeScript and Genkit for the server, which are well-suited for server-side development and AI orchestration. Use Flutter for what it excels at: building beautiful and performant UIs.
-- **Scalability & Centralization**: The UI generation logic is centralized, making it easier to manage, update, and scale.
-- **Improved Security**: API keys and sensitive prompts are kept on the server, not distributed in the client app.
-- **Flexibility**: Other clients (e.g., web, other mobile frameworks) could potentially connect to the same `genui_server`.
+The goal is to create a new, self-contained example within the `genui_client` package, located at `packages/genui_client/example`. This new example will be a port of `simple_chat` but will showcase the `genui_client` library.
+
+The key characteristics of the new example will be:
+
+- **Dependencies**: It will depend on `genui_client` (via a path dependency) and will not have a direct dependency on `flutter_genui` or `firebase_core`.
+- **Architecture**: It will follow a client-server model. The Flutter application will act as the client, using `genui_client`'s `UiAgent` to communicate with a running `genui_server` instance over HTTP. The server will be responsible for all interactions with the generative model.
+- **Functionality**: The user-facing functionality will remain nearly identical to the original `simple_chat` example, providing a clear "before and after" comparison of the two approaches.
+- **Documentation**: The example will include a `README.md` file explaining how to set up and run both the Flutter client and the required `genui_server`.
 
 ## Alternatives Considered
 
-### 1. Keep the Monolithic Flutter Package
+1.  **Modify `simple_chat` in place**: This was rejected because the primary purpose of `simple_chat` is to serve as an example for `flutter_genui`. Altering it to use `genui_client` would eliminate its value in that context and would not align with the goal of creating a _new_ example specifically for `genui_client`.
 
-- **Description**: Continue with the current architecture, where the Flutter app handles both UI generation and rendering.
-- **Pros**:
-  - No major refactoring required.
-  - Simpler initial setup for new projects.
-- **Cons**:
-  - Does not address the limitations of scalability, security, and maintainability.
-  - Tightly couples the UI to the AI logic.
+2.  **Create a completely new, different example**: While a possibility, porting the existing `simple_chat` example is a more effective approach for this specific goal. It allows developers to directly compare the two implementations (`flutter_genui` vs. `genui_client`) and understand the specific changes required to migrate from one to the other. This provides a more valuable learning experience.
 
-### 2. Server-Side Dart
-
-- **Description**: Create a server-side component using a Dart framework like Dart Frog or Shelf.
-- **Pros**:
-  - Allows for code sharing (e.g., data models) between the client and server.
-  - The development team can stick to a single language.
-- **Cons**:
-  - The Dart server-side ecosystem is less mature than Node.js/TypeScript, especially for AI/ML orchestration. Genkit provides a robust, feature-rich environment specifically for this purpose.
-
-The chosen client-server approach with a TypeScript-based Genkit server is the most robust and forward-looking solution.
+The chosen approach of porting `simple_chat` to a new directory under `packages/genui_client/example` is the most direct and effective way to achieve the stated goal.
 
 ## Detailed Design
 
-### 1. Session Management and Protocol
+### 1. Project Structure
 
-To avoid sending the verbose widget catalog with every request, the client will initiate a session with the server.
+A new Flutter application will be created at `packages/genui_client/example`. It will follow the standard Flutter project layout.
 
-- **Handshake**: The client will start by making a "handshake" request to an initialization endpoint on the server. This request will contain the client's protocol version and its widget catalog (serialized as a JSON schema).
-- **Session ID**: The server will validate the request, cache the catalog, and return a unique `sessionId`.
-- **Versioning**: The protocol version (e.g., `v1`) will be sent by the client. The server can check this version for compatibility and reject requests from outdated clients, ensuring backward compatibility can be managed gracefully.
-- **State**: The server will store the catalog associated with the `sessionId`. This could be in an in-memory cache for simplicity or a more persistent store like Redis or Firestore for scalability.
+### 2. Dependencies (`pubspec.yaml`)
 
-### 2. `genui_server` (Genkit/TypeScript)
+The `pubspec.yaml` for the new example will be updated to:
 
-This package will be located in `packages/genui_server`.
+- Remove the `flutter_genui` and `firebase_core` dependencies.
+- Add a path dependency on the `genui_client` package:
+  ```yaml
+  dependencies:
+    genui_client:
+      path: ../
+  ```
+- Add the `logging` package for log configuration.
 
-#### Technology Stack
+### 3. Application Logic (`lib/main.dart`)
 
-- **Framework**: [Genkit](https://firebase.google.com/docs/genkit)
-- **Language**: TypeScript
-- **Package Manager**: pnpm
+The core logic in `main.dart` will be significantly refactored.
 
-#### API Endpoints
+- **Initialization**:
 
-The server will expose two main endpoints:
+  - The `Firebase.initializeApp()` call will be removed from `main()`.
+  - In `_ChatScreenState`, the `UiAgent` will be instantiated from the `genui_client` package. It will not require a system prompt, as this logic now resides on the server.
+  - An asynchronous `_init()` method will be added to `_ChatScreenState` to call `await _uiAgent.startSession()`. This establishes a connection with the `genui_server` and prepares it for generating UI.
 
-1. **`startSession` (Flow)**:
+- **State Management**:
 
-   - **Request**: `{ protocolVersion: string, catalog: JSONSchema }`
-   - **Action**: Caches the catalog, generates a `sessionId`.
-   - **Response**: `{ sessionId: string }` or an error if the protocol version is incompatible.
+  - The `_messages` list will be removed. The UI will now be driven by `_uiAgent.conversation`, which is a `ValueListenable<List<ChatMessage>>`. This provides a reactive stream of messages from the agent.
+  - The loading indicator will be bound to the `_uiAgent.isProcessing` `ValueListenable`.
 
-2. **`generateUI` (Flow)**:
-   - **Request**: `{ sessionId: string, conversation: ChatMessage[] }`
-   - **Action**: Retrieves the catalog using the `sessionId`, interacts with the LLM to generate a UI definition.
-   - **Response**: `{ uiDefinition: UiDefinition }`
+- **UI Rendering**:
+
+  - The `ListView.builder` will be replaced with a `GenUiChat` widget from the `genui_client` package. This widget handles the complexities of rendering the conversation list and providing a text input box.
+  - The `GenUiChat` widget will be configured with the `UiAgent` instance.
+  - The `_onSurfaceAdded` callback and the `MessageController`/`MessageView` classes will be removed, as their functionality is now encapsulated within `genui_client`'s `UiAgent` and `GenUiChat` widget.
+
+- **Sending Messages**:
+  - The `_sendMessage` method will be simplified. It will now call `await _uiAgent.sendRequest(UserMessage.text(text))` to send the user's input to the `genui_server` via the `UiAgent`.
+
+### 4. Code Cleanup
+
+- The `lib/message.dart` and `lib/firebase_options_stub.dart` files will be deleted as they are no longer needed.
+- A `lib/firebase_options.dart` will not be generated or included, as Firebase is no longer a client-side dependency.
+
+### 5. Documentation (`README.md`)
+
+A new `README.md` file will be created for the example with clear instructions on:
+
+1.  How to start the `genui_server` from `packages/genui_server`.
+2.  How to run the Flutter example application.
+3.  The expected interaction flow.
+
+## Diagrams
+
+### Client-Server Interaction Flow
+
+This diagram illustrates the sequence of operations when a user sends a message.
 
 ```mermaid
 sequenceDiagram
-    participant Client as genui_client
-    participant Server as genui_server
+    participant User
+    participant ChatScreen (Flutter UI)
+    participant UiAgent (genui_client)
+    participant GenUIClient (genui_client)
+    participant GenUIServer
+    participant LLM
 
-    Client->>+Server: POST /startSession (protocolVersion, catalog)
-    Server->>Server: Cache catalog, generate sessionId
-    Server-->>-Client: 200 OK { sessionId }
-
-    loop Conversation
-        Client->>+Server: POST /generateUI (sessionId, conversation)
-        Server->>Server: Retrieve catalog by sessionId
-        Server->>LLM: Generate content with catalog
-        LLM-->>Server: Return UI tool calls
-        Server->>Server: Construct UiDefinition
-        Server-->>-Client: 200 OK { uiDefinition }
-    end
+    User->>ChatScreen: Types message and taps Send
+    ChatScreen->>UiAgent: sendRequest(UserMessage)
+    UiAgent->>GenUIClient: generateUI(sessionId, conversation)
+    GenUIClient->>GenUIServer: POST /generateUi (HTTP Request)
+    GenUIServer->>LLM: generateContent(prompt, catalog)
+    LLM-->>GenUIServer: Stream of UI definitions / text
+    GenUIServer-->>GenUIClient: Stream of HTTP chunks
+    GenUIClient-->>UiAgent: Stream of ChatMessage objects
+    UiAgent->>ChatScreen: Updates conversation ValueListenable
+    ChatScreen->>User: Renders new messages and UI
 ```
 
-### 3. `genui_client` (Flutter)
+## Summary
 
-This package will be located in `packages/genui_client`.
+The refactor involves creating a new Flutter example that faithfully ports the UI/UX of `simple_chat`. The key architectural change is the removal of `flutter_genui` and direct Firebase integration in favor of the `genui_client` package, which communicates with a separate `genui_server` process. This will result in a cleaner separation of concerns and provide a canonical example for developers on how to use the new client-server architecture.
 
-#### Core Flutter Components
+## References
 
-1. **`GenUIClient`**:
-
-   - Will manage the `sessionId`.
-   - **`startSession(Catalog catalog)`**: An initialization method to perform the handshake. It will be called once when the application starts. It will store the received `sessionId`.
-   - **`generateUI(List<ChatMessage> conversation)`**: This method will now send the stored `sessionId` along with the conversation. It will also handle session expiry or errors, potentially by re-triggering the `startSession` handshake.
-
-2. **UI Rendering Logic**:
-
-   - The existing UI rendering logic from `flutter_genui` will be moved to this package. This includes `GenUiSurface`, `SurfaceManager`, `Catalog`, and the core widgets.
-
-3. **`GenUiManager` Refactoring**:
-   - The `GenUiManager` will be refactored to orchestrate the interaction with the `GenUIClient`. It will be responsible for ensuring a session is started before `generateUI` is called.
-
-### 4. New `travel_app` Example
-
-A new example application will be created by copying the existing `travel_app` to `packages/genui_client/example`. This new example will be updated to:
-
-- Depend on `genui_client`.
-- Initialize the `GenUiManager` and call a method to start the session during app startup.
-- Use the `GenUiManager` to send conversation updates to the server and receive UI definitions in return.
-
-## Summary of Design
-
-The refactor will result in a clean separation of concerns. The client defines its UI capabilities and initiates a session with the server. Subsequent communication is lightweight, referencing the session. This architecture is efficient, scalable, secure, and maintainable.
-
-## Research URLs
-
-- **Genkit Documentation**: [https://firebase.google.com/docs/genkit](https://firebase.google.com/docs/genkit)
-- **Zod (for schema definition)**: [https://zod.dev/](https://zod.dev/)
-- **pnpm Package Manager**: [https://pnpm.io/](https://pnpm.io/)
+- [genui_client Package](/packages/genui_client/lib/genui_client.dart)
+- [genui_server Package](/packages/genui_server/src/index.ts)
