@@ -15,9 +15,9 @@ The central philosophy of GUP is the strict decoupling of four key elements, whi
 3. **The State (The Data):** A server-provided JSON object containing the dynamic values that populate the layout, such as text content, boolean flags, or lists of data.
 4. **The Data Model (The Schemas):** A set of formal definitions for complex data objects used within the state, included within the Catalog to ensure type safety.
 
-### **1.2. The DynamicUIPacket: The Atomic Unit of Communication**
+### **1.2. The UiDefinitionPacket: The Atomic Unit of Communication**
 
-All initial UI descriptions transmitted from the server to the client are encapsulated within a single, top-level JSON object: the `DynamicUIPacket`. This packet represents an atomic and self-contained description of a UI view at a specific moment.
+All initial UI descriptions transmitted from the server to the client are encapsulated within a single, top-level JSON object: the `UiDefinitionPacket`. This packet represents an atomic and self-contained description of a UI view at a specific moment.
 
 The packet contains the following top-level keys:
 
@@ -33,7 +33,7 @@ The data flow is a well-defined sequence:
 1. **Client Initialization:** The app initializes its widget registry and generates its `WidgetCatalog`.
 2. **Initial UI Request:** The client requests the initial UI from the server. This request includes a reference to a pre-agreed catalog (by name and version) and any local, client-side additions to that catalog.
 3. **Server Response & Negotiation:** The server validates the catalog reference.
-   - If the catalog is known, the server merges any additions and responds with a `DynamicUIPacket`.
+   - If the catalog is known, the server merges any additions and responds with a `UiDefinitionPacket`.
    - If the catalog reference is unknown, the server responds with an error, prompting the client to resend its request with the complete catalog definition.
 4. **Client-Side Rendering:** The client validates the packet against its catalog, then builds the widget tree by processing the layout and applying state bindings.
 5. **User Interaction:** A user interacts with a widget (e.g., taps a button).
@@ -54,12 +54,12 @@ sequenceDiagram
 
         alt Catalog is known by server
             Client->>+Server: 2. Requests Initial UI (Sends Catalog Reference + Additions)
-            Server-->>-Client: 3. Responds with DynamicUIPacket (Layout + State)
+            Server-->>-Client: 3. Responds with UiDefinitionPacket (Layout + State)
         else Catalog is unknown by server
             Client->>+Server: 2. Requests Initial UI (Sends Catalog Reference + Additions)
             Server-->>-Client: 3a. Responds with "Unknown Catalog" Error
             Client->>+Server: 3b. Re-sends request with Full Catalog
-            Server-->>-Client: 3c. Responds with DynamicUIPacket (Layout + State)
+            Server-->>-Client: 3c. Responds with UiDefinitionPacket (Layout + State)
         end
         Note right of Client: 4. Validates packet, builds widget tree, <br/>and applies state bindings.
         Client-->>-User: Displays Full UI
@@ -83,7 +83,7 @@ The `WidgetCatalog` is a JSON document that serves as a strict contract of the c
 
 The catalog explicitly declares the client's capabilities, enabling:
 
-- **Server-Side Validation:** The server can validate any `DynamicUIPacket` against the client's catalog before sending it.
+- **Server-Side Validation:** The server can validate any `UiDefinitionPacket` against the client's catalog before sending it.
 - **Versioning and Coexistence:** The server can support a set of known catalog versions, allowing it to generate compatible UI for different client versions without requiring the client to send its full capabilities on every request.
 - **Guided LLM Generation:** The catalog provides a structured schema that can be used to constrain the output of a Large Language Model, ensuring it only generates valid, renderable UI definitions.
 - **Formalized Data Structures:** It allows for defining complex data types, ensuring that `state` objects are well-formed and type-safe.
@@ -216,7 +216,7 @@ GUP enforces a clean separation between the UI's structure (layout) and its dyna
 
 ### **4.1. The `state` Object: A Centralized Data Store**
 
-The `state` key in the `DynamicUIPacket` holds a single JSON object. This is the sole source of truth for all dynamic data. By defining the structure of its contents in the catalog's `dataTypes` section, the state object is not an arbitrary blob but a well-defined, validatable data model. For example, the state could contain a `currentUser` object that is validated against the `User` schema from the catalog.
+The `state` key in the `UiDefinitionPacket` holds a single JSON object. This is the sole source of truth for all dynamic data. By defining the structure of its contents in the catalog's `dataTypes` section, the state object is not an arbitrary blob but a well-defined, validatable data model. For example, the state could contain a `currentUser` object that is validated against the `User` schema from the catalog.
 
 ### **4.2. Data Binding with Transformations**
 
@@ -487,7 +487,7 @@ This schema defines the objects that are actively exchanged between the client a
       },
       "required": ["root", "nodes"]
     },
-    "DynamicUIPacket": {
+    "UiDefinitionPacket": {
       "type": "object",
       "properties": {
         "formatVersion": {
@@ -691,7 +691,7 @@ This schema defines the objects that are actively exchanged between the client a
   },
   "oneOf": [
     {
-      "$ref": "#/$defs/DynamicUIPacket"
+      "$ref": "#/$defs/UiDefinitionPacket"
     },
     {
       "$ref": "#/$defs/EventPayload"
