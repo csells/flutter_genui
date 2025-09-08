@@ -35,12 +35,12 @@ The stream consists of the following message types:
 The data flow is a well-defined sequence:
 
 1. **Client Initialization:** The app initializes its widget registry and generates its `WidgetCatalog`.
-2. **UI Request:** The client requests the UI from the server, sending its catalog reference.
-3. **Server Response & Negotiation:** The server validates the catalog. If recognized, it begins sending the UI as a JSONL stream. If not, it sends an `UnknownCatalogError` and the client re-requests with the full catalog and no `catalogReference`.
-4. **Client-Side Progressive Rendering:** The client parses the JSONL stream. As `LayoutNode` messages arrive, they are buffered. Once the `LayoutRoot` message is received, the client begins rendering the UI, progressively adding new elements as their corresponding nodes arrive.
+2. **Initial UI Request:** The client sends a `ClientRequest` message to the server, containing only the catalog information.
+3. **Server Response & Negotiation:** The server validates the catalog. If recognized, it begins sending the UI as a JSONL stream. If not, it sends an `UnknownCatalogError` and the client re-requests with the full catalog.
+4. **Client-Side Progressive Rendering:** The client parses the JSONL stream and progressively renders the UI.
 5. **User Interaction:** A user interacts with a widget.
-6. **Event Transmission:** The client sends an `EventPayload` to the server.
-7. **Server-Side Logic & Streamed Update:** The server processes the event and responds with a new JSONL stream containing the updated UI.
+6. **Event Transmission:** The client sends a new `ClientRequest` message to the server. This message includes the catalog info, the current `layout` and `state` of the UI, and an `event` object describing the user's action.
+7. **Server-Side Logic & Streamed Update:** The server processes the event using the provided context and responds with a new JSONL stream containing the updated UI.
 
 ```mermaid
 sequenceDiagram
@@ -54,12 +54,12 @@ sequenceDiagram
         Client->>Client: 1. Initializes WidgetRegistry & Generates Catalog
 
         alt Catalog is known by server
-            Client->>+Server: 2. Requests Initial UI (Sends Catalog Reference)
-            Server-->>-Client: 3. Responds with JSONL Stream (Header, Nodes, State, Root)
+            Client->>+Server: 2. Sends ClientRequest (CatalogReference and Supplemental Catalog)
+            Server-->>-Client: 3. Responds with JSONL Stream
         else Catalog is unknown by server
-            Client->>+Server: 2. Requests Initial UI (Sends Catalog Reference)
+            Client->>+Server: 2. Sends ClientRequest (CatalogReference and Supplemental Catalog)
             Server-->>-Client: 3a. Responds with "Unknown Catalog" Error
-            Client->>+Server: 3b. Re-sends request with Full Catalog
+            Client->>+Server: 3b. Re-sends ClientRequest (Full Catalog)
             Server-->>-Client: 3c. Responds with JSONL Stream
         end
         Note right of Client: 4. Parses stream and progressively <br/>renders UI as nodes arrive.
@@ -68,7 +68,7 @@ sequenceDiagram
 
     loop Interaction & Update Cycle
         User->>+Client: 5. Interacts with a rendered widget (e.g., tap)
-        Client->>+Server: 6. Transmits EventPayload
+        Client->>+Server: 6. Sends ClientRequest (with Event, Layout, and State)
         Note left of Server: 7. Processes event and prepares new UI.
         Server-->>-Client: 8. Responds with a new JSONL stream
         Note right of Client: 9. Replaces UI with new progressively <br/>rendered view.
@@ -283,20 +283,24 @@ In the future, other transformations could be added, such as defining a query, a
 
 ## **Section 5: Event Handling**
 
-### **5.1. Client-to-Server: The `EventPayload`**
+### **5.1. Client-to-Server: The `ClientRequest` Message**
 
-When a user triggers an event, the client sends an `EventPayload` message to the server. To support a stateless server architecture, this message must identify the client's capabilities.
+All communication from the client to the server is handled by a single, unified `ClientRequest` message. The presence of the optional `event` field determines the purpose of the request.
 
-The `EventPayload` is structured as follows:
+- **Initial UI Request:** The client sends a `ClientRequest` with only the `catalogReference` and/or `catalog` fields.
+- **User Interaction:** The client sends a `ClientRequest` that includes the catalog information, the current `layout` and `state` of the UI, and an `event` object describing the interaction.
+
+The `ClientRequest` is structured as follows:
 
 - `catalogReference`: An optional object identifying a predefined base catalog.
-  - `name`: The name of the base catalog (e.g., "material").
-  - `version`: The semantic version of the base catalog (e.g., "1.2.1").
-- `catalog`: An optional `WidgetCatalog` object. If `catalogReference` is provided, this contains any client-specific additions or overrides to the base catalog. If `catalogReference` is omitted, this should contain the full widget catalog that the client supports.
-- `sourceNodeId`: The `id` of the `LayoutNode` that generated the event.
-- `eventName`: The name of the event (e.g., `onPressed`).
-- `timestamp`: An ISO 8601 string representing when the event occurred.
-- `arguments`: An optional object containing contextual data. The structure of this object **must** conform to the schema defined for this event in the resolved `WidgetCatalog`.
+- `catalog`: An optional `WidgetCatalog` object containing the full catalog or just additions.
+- `event`: An optional object describing the user interaction. Its presence indicates a user event.
+  - `sourceNodeId`: The `id` of the `LayoutNode` that generated the event.
+  - `eventName`: The name of the event (e.g., `onPressed`).
+  - `timestamp`: An ISO 8601 string of when the event occurred.
+  - `arguments`: An optional object with event-specific data.
+- `layout`: The complete `Layout` object of the current UI. Sent when `event` is present.
+- `state`: The complete `state` object of the current UI. Sent when `event` is present.
 
 ### **5.2. Server-to-Client: Streamed UI Update**
 
@@ -421,18 +425,26 @@ This section provides the formal, consolidated, and valid JSON Schema definition
         }
       }
     },
-    "EventPayload": {
+    "Event": {
       "type": "object",
       "properties": {
-        "messageType": { "const": "EventPayload" },
-        "catalogReference": { "$ref": "#/$defs/CatalogReference" },
-        "catalog": { "$ref": "#/$defs/PartialWidgetCatalog" },
         "sourceNodeId": { "type": "string" },
         "eventName": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
         "arguments": { "type": "object" }
       },
-      "required": ["messageType", "sourceNodeId", "eventName", "timestamp"]
+      "required": ["sourceNodeId", "eventName", "timestamp"]
+    },
+    "ClientRequest": {
+      "type": "object",
+      "properties": {
+        "messageType": { "const": "ClientRequest" },
+        "catalogReference": { "$ref": "#/$defs/CatalogReference" },
+        "catalog": { "$ref": "#/$defs/PartialWidgetCatalog" },
+        "event": { "$ref": "#/$defs/Event" },
+        "layout": { "$ref": "#/$defs/Layout" },
+        "state": { "type": "object" }
+      }
     },
     "UnknownCatalogError": {
       "type": "object",
@@ -449,7 +461,7 @@ This section provides the formal, consolidated, and valid JSON Schema definition
     { "$ref": "#/$defs/Layout" },
     { "$ref": "#/$defs/LayoutRoot" },
     { "$ref": "#/$defs/StateUpdate" },
-    { "$ref": "#/$defs/EventPayload" },
+    { "$ref": "#/$defs/ClientRequest" },
     { "$ref": "#/$defs/UnknownCatalogError" }
   ]
 }
