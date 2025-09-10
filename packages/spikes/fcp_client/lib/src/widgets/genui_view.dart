@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 
 import '../core/gsp_interpreter.dart';
@@ -243,12 +245,22 @@ class _LayoutEngine extends StatelessWidget {
       node.properties ?? <String, Object?>{},
     );
 
-    for (final MapEntry<String, Object?> entry in resolvedProperties.entries) {
-      if (entry.value is! Map<String, Object?>) {
-        continue;
+    final RegExp interpolationRegex = RegExp(r'\$\{([^}]+)\}');
+
+    resolvedProperties.updateAll((String key, Object? value) {
+      if (value is String) {
+        return value.replaceAllMapped(interpolationRegex, (Match match) {
+          final String path = match.group(1)!;
+          Object? resolvedValue;
+          if (path.startsWith('item.') && scopedData != null) {
+            resolvedValue = _getValueFromMap(path.substring(5), scopedData);
+          } else {
+            resolvedValue = _getValueFromMap(path, interpreter.currentState);
+          }
+          return resolvedValue?.toString() ?? '';
+        });
       }
-      final Map<String, Object?> value = entry.value as Map<String, Object?>;
-      if (value.containsKey(r'$bind')) {
+      if (value is Map<String, Object?> && value.containsKey(r'$bind')) {
         final Binding binding = Binding.fromMap(value);
         Object? resolvedValue;
         if (binding.path.startsWith('item.') && scopedData != null) {
@@ -263,13 +275,13 @@ class _LayoutEngine extends StatelessWidget {
           );
         }
         if (resolvedValue != null) {
-          resolvedProperties[entry.key] = _applyTransformation(
-            resolvedValue,
-            binding,
-          );
+          return _applyTransformation(resolvedValue, binding);
         }
+        return null;
       }
-    }
+      return value;
+    });
+
     return resolvedProperties;
   }
 
@@ -317,6 +329,7 @@ class _ErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    log('Error: $message');
     return Material(
       type: MaterialType.transparency,
       child: Center(
