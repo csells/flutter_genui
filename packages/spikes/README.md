@@ -6,7 +6,6 @@ _`spike`_ - An experiment or proof of concept (in [Scrum](<https://en.wikipedia.
 
 ## Packages
 
-| Package                              | Description                                                     |
-| ------------------------------------ | --------------------------------------------------------------- |
-| [fcp_client](./fcp_client)           | A renderer for a JSON-based UI description based on JSON patch. |
-| [chat_box_tester](./chat_box_tester) | A test app for testing out the chat box widget.                 |
+| Package                    | Description                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
+| [gsp_client](./gsp_client) | A renderer for a JSON-based UI description based on JSONL streams. |
